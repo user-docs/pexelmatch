@@ -13,12 +13,12 @@ defmodule PixelmatchTest do
       |> Pixelmatch.run()
 
 
-      # assert %{
-      #   img_1_path: Path.join(".", "/test/fixtures/8diff.png"),
-      #   img_2_path: Path.join(".", "/test/fixtures/temp_diff.png"),
-      #   diff_path: "./test/fixtures/toss.png"
-      # }
-      # |> Pixelmatch.run() == {:ok, :identical}
+      assert %{
+        img_1_path: Path.join(".", "/test/fixtures/8diff.png"),
+        img_2_path: Path.join(".", "/test/fixtures/temp_diff.png"),
+        diff_path: "./test/fixtures/toss.png"
+      }
+      |> Pixelmatch.run() == {:ok, :identical}
 
     end
 

@@ -83,7 +83,6 @@ defmodule Pixelmatch.Match do
       }
       |> case do
         {true, true, true} ->
-          #IO.puts("x: #{x}, y: #{y} is antialiased")
           pixel = draw_pixel(opts.aa_color)
           Map.put(acc, :diff_img, Image.draw(acc.diff_img, {x, y}, pixel))
 
@@ -124,6 +123,7 @@ defmodule Pixelmatch.Match do
       delta = color_delta(pixel, adjacent_pixel.pixel, true)
 
       # IO.inspect(adjacent_pixel, label: :adjacent_pixel)
+      IO.puts("x: #{adjacent_pixel.x}, y: #{adjacent_pixel.y}")
 
       case delta do
         0 ->

@@ -29,8 +29,8 @@ defmodule Pixelmatch.Matrix do
   def get_adjacent_coordinates(x, y, width, height) do
     {x_range, y_range} = get_adjacent_ranges(x, y, width, height)
 
-    Enum.map(y_range, fn inner_y ->
-      Enum.map(x_range, fn inner_x ->
+    Enum.map(x_range, fn inner_x ->
+      Enum.map(y_range, fn inner_y ->
         {inner_x, inner_y}
       end)
     end)
