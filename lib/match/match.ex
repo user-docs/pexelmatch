@@ -1,6 +1,6 @@
 defmodule Pixelmatch.Match do
+  alias ExPng.Image
   alias Pixelmatch.Matrix
-  alias Pixelmatch.Compare
 
   defstruct img_1: %{}, img_2: %{}, deltas: %{}, diff: %{}
 
@@ -19,10 +19,13 @@ defmodule Pixelmatch.Match do
   # draw the diff over a transparent background (a mask)
   @default_diff_mask false
 
-  def apply(pixels_1, pixels_2, output, width, height, options) do
+  @spec apply(any, any, binary, pos_integer, pos_integer, map) :: {:ok, any}
+  def apply(img_1, img_2, output, width, height, options) do
     threshold = Map.get(options, :threshold, @default_threshold)
 
     opts = %{
+      width: width,
+      height: height,
       threshold: threshold,
       include_aa: Map.get(options, :include_aa, @default_include_aa),
       alpha: Map.get(options, :alpha, @default_alpha),
@@ -32,131 +35,79 @@ defmodule Pixelmatch.Match do
       diff_color_alt: Map.get(options, :diff_color_alt, @default_diff_color_alt),
       max_delta: 35215 * threshold * threshold
     }
+    #{:same, false} <- {:same, images_identical?(img_1, img_2, opts)},
 
-    with pixels <- zip_pixels(pixels_1, pixels_2),
-         state <- cast_pixels(pixels, width, height),
-         {:same, false} <- {:same, identical?(state)},
-         {:delta, state} <- {:delta, calculate_delta(state)},
-         {:aa, state} <- {:aa, map_antialiased(state, width, height)},
-         {:cmp, state} <- {:cmp, map_diff_pixel(state, opts)},
-         {:write, state} <- {:write, write_diff(state, output)} do
-      {:ok, state}
+    matrix_1 = Matrix.cast_image(img_1)
+    matrix_2 = Matrix.cast_image(img_2)
+
+    with {:cmp, %{diff_count: count, diff_img: img}} <- {:cmp, compare(matrix_1, matrix_2, opts)},
+         {:write, {:ok, _}} <- {:write, Image.to_file(img, output)} do
+      {:ok, count}
     else
       {:same, true} -> {:ok, :identical}
     end
   end
 
-  def zip_pixels(pixels_1, pixels_2) do
-    Enum.zip_with(pixels_1, pixels_2, fn row_1, row_2 ->
-      Enum.zip(row_1, row_2)
-    end)
-  end
-
-  def cast_pixels(pixels, width, height) do
-    matrix = Matrix.new(width, height)
-
-    pixels
-    |> Enum.reduce({0, matrix}, fn pixel_row, {y, matrix_row} ->
-      matrix_row =
-        Enum.reduce(pixel_row, {0, matrix_row}, fn {pixel_1, pixel_2}, {x, matrix_val} ->
-          compare = %Compare{pixel_1: pixel_1, pixel_2: pixel_2}
-          {x + 1, Matrix.put(matrix_val, compare, x, y)}
-        end)
-        |> elem(1)
-
-      {y + 1, matrix_row}
-    end)
-    |> elem(1)
-  end
-
-  def identical?(state) do
-    fun = fn %{pixel_1: pixel_1, pixel_2: pixel_2}, acc, _x, _y ->
-      acc && pixel_1 == pixel_2
+  def images_identical?(img_1, img_2, opts) do
+    pixels_identical = fn(acc, x, y) ->
+      if acc do
+        Image.at(img_1, {x, y}) == Image.at(img_2, {x, y})
+      else
+        acc
+      end
     end
 
-    Matrix.reduce(state, fun, true)
+    Matrix.reduce(opts.width, opts.height, pixels_identical, true)
   end
 
-  def calculate_delta(state) do
-    fun = fn %{pixel_1: pixel_1, pixel_2: pixel_2} = value ->
-      delta = color_delta(pixel_1, pixel_2, false)
-      Map.put(value, :delta, delta)
-    end
-
-    Matrix.map(state, fun)
-  end
-
-  def map_antialiased(matrix, width, height) do
-    fun = fn value, matrix, x, y ->
-      p1_antialiased? = pixel_antialiased?(matrix, x, y, width, height, :pixel_1, :pixel_2)
-      p2_antialiased? = pixel_antialiased?(matrix, x, y, width, height, :pixel_2, :pixel_1)
-
-      value =
-        value
-        |> Map.put(:pixel_1_antialiased, p1_antialiased?)
-        |> Map.put(:pixel_2_antialiased, p2_antialiased?)
-
-      Matrix.put(matrix, value, x, y)
-    end
-
-    Matrix.with_index(matrix, fun)
-  end
-
-  def map_diff_pixel(matrix, opts) do
-    fun = fn value, matrix, x, y ->
-      %{
-        pixel_1: pixel_1,
-        pixel_2: pixel_2,
-        pixel_1_antialiased: pixel_1_antialiased,
-        pixel_2_antialiased: pixel_2_antialiased
-      } = value
-
+  def compare(matrix_1, matrix_2, opts) do
+    diff_img = ExPng.Image.new(opts.width, opts.height)
+    init_acc = %{
+      diff_count: 0,
+      diff_img: diff_img
+    }
+    compare = fn(acc, x, y) ->
+      pixel_1 = Matrix.get(matrix_1, {x, y})
+      pixel_2 = Matrix.get(matrix_2, {x, y})
       delta = color_delta(pixel_1, pixel_2, false)
 
-      value =
-        {
-          abs(delta) > opts.max_delta,
-          not opts.include_aa && (pixel_1_antialiased || pixel_2_antialiased),
-          not opts.diff_mask
-        }
-        |> case do
-          {true, true, true} ->
-            diff_pixel = draw_pixel(opts.aa_color)
-            Map.put(value, :diff_pixel, diff_pixel)
+      p1_antialiased? = antialiased?(matrix_1, x, y, opts.width, opts.height, matrix_2)
+      p2_antialiased? = antialiased?(matrix_2, x, y, opts.width, opts.height, matrix_1)
 
-          {true, _, _} ->
-            color = opts.diff_color_alt || opts.diff_color
-            diff_pixel = draw_pixel(color)
+      #IO.puts("p1: #{p1_antialiased?} p2: #{p2_antialiased?}")
 
-            value
-            |> Map.put(:diff_pixel, diff_pixel)
-            |> Map.put(:diff, true)
+      {
+        abs(delta) > opts.max_delta,
+        not(opts.include_aa) && (p1_antialiased? || p2_antialiased?),
+        not(opts.diff_mask)
+      }
+      |> case do
+        {true, true, true} ->
+          IO.puts("x: #{x}, y: #{y} is antialiased")
+          pixel = draw_pixel(opts.aa_color)
+          Map.put(acc, :diff_img, Image.draw(acc.diff_img, {x, y}, pixel))
 
-          _ ->
-            diff_pixel = draw_gray_pixel(pixel_1, opts.alpha)
-            Map.put(value, :diff_pixel, diff_pixel)
-        end
+        {true, _, _} ->
+          color = opts.diff_color_alt || opts.diff_color
+          pixel = draw_pixel(color)
+          acc
+          |> Map.put(:diff_img, Image.draw(acc.diff_img, {x, y}, pixel))
+          |> Map.put(:diff_count, acc.diff_count + 1)
 
-      Matrix.put(matrix, value, x, y)
+        _ ->
+          pixel = draw_gray_pixel(pixel_1, opts.alpha)
+          Map.put(acc, :diff_img, Image.draw(acc.diff_img, {x, y}, pixel))
+      end
     end
 
-    Matrix.with_index(matrix, fun)
+    Matrix.reduce(opts.width, opts.height, compare, init_acc)
   end
 
-  def write_diff(matrix, out) do
-    IO.inspect(out)
-  end
-
-  def pixel_antialiased?(matrix, x, y, width, height, this_key, other_key) do
+  def antialiased?(matrix, x, y, width, height, other_matrix) do
     zeros = Matrix.get_zeros(x, y, width, height)
-
-    adjacent_pixels =
-      Matrix.get_adjacent_values(matrix, x, y, width, height)
-      |> Enum.map(&Map.get(&1, this_key))
-
-    pixel =
-      Matrix.get(matrix, x, y)
-      |> Map.get(this_key)
+    adjacent_pixels = Matrix.get_adjacent_values(matrix, x, y, width, height)
+    pixel = Matrix.get(matrix, {x, y})
+    #|> IO.inspect(label: :current_pixel)
 
     init_acc = %{
       min_x: nil,
@@ -164,25 +115,31 @@ defmodule Pixelmatch.Match do
       max_x: nil,
       max_y: nil,
       zeros: zeros,
-      antialiased: nil,
       min: 0,
       max: 0
     }
 
     adjacent_pixels
     |> Enum.reduce(init_acc, fn adjacent_pixel, acc ->
-      delta = color_delta(pixel, adjacent_pixel, true)
+      delta = color_delta(pixel, adjacent_pixel.pixel, true)
+
+      # IO.inspect(adjacent_pixel, label: :adjacent_pixel)
 
       case delta do
         0 ->
           Map.put(acc, :zeros, acc.zeros + 1)
 
         delta when delta < acc.min ->
-          Map.merge(acc, %{min: delta, min_x: x, min_y: y})
+          acc
+          |> Map.put(:min, delta)
+          |> Map.put(:min_x, adjacent_pixel.x)
+          |> Map.put(:min_y, adjacent_pixel.y)
 
-        # this >= was divergent from original code
         delta when delta > acc.max ->
-          Map.merge(acc, %{max: delta, max_x: x, max_y: y})
+          acc
+          |> Map.put(:max, delta)
+          |> Map.put(:max_x, adjacent_pixel.x)
+          |> Map.put(:max_y, adjacent_pixel.y)
 
         # this was divergent from original code. handles when delta = max
         _ ->
@@ -200,21 +157,24 @@ defmodule Pixelmatch.Match do
         false
 
       %{min_x: min_x, min_y: min_y, max_y: max_y, max_x: max_x} ->
-        (has_many_siblings(matrix, this_key, min_x, min_y, width, height) &&
-           has_many_siblings(matrix, other_key, min_x, min_y, width, height)) ||
-          (has_many_siblings(matrix, this_key, max_x, max_y, width, height) &&
-             has_many_siblings(matrix, other_key, max_x, max_y, width, height))
+        min_1 = has_many_siblings(matrix,        min_x, min_y, width, height)
+        min_2 = has_many_siblings(other_matrix,  min_x, min_y, width, height)
+
+        max_1 = has_many_siblings(matrix,        max_x, max_y, width, height)
+        max_2 = has_many_siblings(other_matrix,  max_x, max_y, width, height)
+
+        #IO.puts("#{x},  #{y}, #{inspect pixel}: #{min_1}, #{min_2}, #{max_1}. #{max_2}")
+        (min_1 && min_2) || (max_1 && max_2)
     end
   end
 
-  def has_many_siblings(matrix, key, x, y, width, height) do
+  def has_many_siblings(matrix, x, y, width, height) do
     zeros = Matrix.get_zeros(x, y, width, height)
-    pixel = Matrix.get(matrix, x, y)
+    pixel = Matrix.get(matrix, {x, y})
 
     Matrix.get_adjacent_values(matrix, x, y, width, height)
-    |> Enum.map(&Map.get(&1, key))
     |> Enum.reduce(zeros, fn adjacent_pixel, acc ->
-      if pixel == adjacent_pixel do
+      if pixel == adjacent_pixel.pixel do
         acc + 1
       else
         acc
@@ -230,7 +190,7 @@ defmodule Pixelmatch.Match do
 
   def draw_gray_pixel(<<_r, _g, _b, a>> = pixel_1, alpha) do
     # dubious, this might need to get floored
-    val = blend(rgb_to_y(pixel_1), alpha * a / 255)
+    val = blend(rgb_to_y(pixel_1), alpha * a / 255) |> round()
     <<val, val, val, 255>>
   end
 
