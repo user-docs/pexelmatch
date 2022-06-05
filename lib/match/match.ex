@@ -35,12 +35,12 @@ defmodule Pixelmatch.Match do
       diff_color_alt: Map.get(options, :diff_color_alt, @default_diff_color_alt),
       max_delta: 35215 * threshold * threshold
     }
-    #{:same, false} <- {:same, images_identical?(img_1, img_2, opts)},
 
     matrix_1 = Matrix.cast_image(img_1)
     matrix_2 = Matrix.cast_image(img_2)
 
-    with {:cmp, %{diff_count: count, diff_img: img}} <- {:cmp, compare(matrix_1, matrix_2, opts)},
+    with {:same, false} <- {:same, images_identical?(img_1, img_2, opts)},
+         {:cmp, %{diff_count: count, diff_img: img}} <- {:cmp, compare(matrix_1, matrix_2, opts)},
          {:write, {:ok, _}} <- {:write, Image.to_file(img, output)} do
       {:ok, count}
     else
@@ -83,7 +83,7 @@ defmodule Pixelmatch.Match do
       }
       |> case do
         {true, true, true} ->
-          IO.puts("x: #{x}, y: #{y} is antialiased")
+          #IO.puts("x: #{x}, y: #{y} is antialiased")
           pixel = draw_pixel(opts.aa_color)
           Map.put(acc, :diff_img, Image.draw(acc.diff_img, {x, y}, pixel))
 

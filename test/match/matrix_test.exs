@@ -8,29 +8,7 @@ defmodule Pixelmatch.MatrixTest do
       assert %Arrays.Implementations.MapArray{} =
                Image.from_file("./test/fixtures/8a.png")
                |> elem(1)
-               |> Matrix.cast()
-    end
-  end
-
-  describe "Mappers" do
-    test "with_index modifies array" do
-      fun = fn val, matrix, x, y ->
-        Matrix.put(matrix, val * 2, x, y)
-      end
-
-      array =
-        Arrays.new([
-          Arrays.new([1, 2]),
-          Arrays.new([1, 2])
-        ])
-
-      result = Matrix.with_index(array, fun)
-
-      assert result ==
-               Arrays.new([
-                 Arrays.new([2, 4]),
-                 Arrays.new([2, 4])
-               ])
+               |> Matrix.cast_image()
     end
   end
 
