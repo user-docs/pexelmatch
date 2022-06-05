@@ -1,6 +1,7 @@
 defmodule Pixelmatch.Match do
   alias ExPng.Image
   alias Pixelmatch.Matrix
+  require Logger
 
   defstruct img_1: %{}, img_2: %{}, deltas: %{}, diff: %{}
 
@@ -83,6 +84,7 @@ defmodule Pixelmatch.Match do
       }
       |> case do
         {true, true, true} ->
+          Logger.debug("Will write anti-aliased pixel at x: #{x}, y: #{y}")
           pixel = draw_pixel(opts.aa_color)
           Map.put(acc, :diff_img, Image.draw(acc.diff_img, {x, y}, pixel))
 
@@ -123,7 +125,7 @@ defmodule Pixelmatch.Match do
       delta = color_delta(pixel, adjacent_pixel.pixel, true)
 
       # IO.inspect(adjacent_pixel, label: :adjacent_pixel)
-      IO.puts("x: #{adjacent_pixel.x}, y: #{adjacent_pixel.y}")
+      IO.puts("x: #{adjacent_pixel.x}, y: #{adjacent_pixel.y}, delta: #{delta}")
 
       case delta do
         0 ->
@@ -146,6 +148,7 @@ defmodule Pixelmatch.Match do
           acc
       end
     end)
+    |> IO.inspect()
     |> case do
       %{zeros: zeros} when zeros > 2 ->
         false
@@ -163,7 +166,7 @@ defmodule Pixelmatch.Match do
         max_1 = has_many_siblings(matrix,        max_x, max_y, width, height)
         max_2 = has_many_siblings(other_matrix,  max_x, max_y, width, height)
 
-        #IO.puts("#{x},  #{y}, #{inspect pixel}: #{min_1}, #{min_2}, #{max_1}. #{max_2}")
+        IO.puts("#{x},  #{y}, #{inspect pixel}: #{min_1}, #{min_2}, #{max_1}, #{max_2}")
         (min_1 && min_2) || (max_1 && max_2)
     end
   end
@@ -173,11 +176,11 @@ defmodule Pixelmatch.Match do
     pixel = Matrix.get(matrix, {x, y})
 
     Matrix.get_adjacent_values(matrix, x, y, width, height)
-    |> Enum.reduce(zeros, fn adjacent_pixel, acc ->
+    |> Enum.reduce(zeros, fn adjacent_pixel, inner_zeroes ->
       if pixel == adjacent_pixel.pixel do
-        acc + 1
+        inner_zeroes + 1
       else
-        acc
+        inner_zeroes
       end
     end)
     |> case do

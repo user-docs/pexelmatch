@@ -49,7 +49,7 @@ defmodule Pixelmatch.Matrix do
 
   def get_zeros(x, y, width, height) do
     {{x_min, x_max}, {y_min, y_max}} = get_adjacent_bounds(x, y, width, height)
-    if x_min == x || x_min == x_max || y_min == y || y_min == y_max, do: 0, else: 1
+    if x_min == x || x == x_max || y_min == y || y == y_max, do: 1, else: 0
   end
 
   def get_adjacent_bounds(x, y, width, height) do
