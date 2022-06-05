@@ -33,8 +33,8 @@ defmodule PixelmatchTest do
 
     test "identical images return {:ok, :identical} tuple" do
       opts = %{
-        img_1_path: Path.join(".", "/test/4_white_pixels.png"),
-        img_2_path: Path.join(".", "/test/4_white_pixels.png"),
+        img_1_path: Path.join(".", "/test/fixtures/4_white_pixels.png"),
+        img_2_path: Path.join(".", "/test/fixtures/4_white_pixels.png"),
         diff_path: "/test/diff.png"
       }
       assert Pixelmatch.run(opts) == {:ok, :identical}
@@ -42,8 +42,8 @@ defmodule PixelmatchTest do
 
     test "errors with images of different sizes" do
       opts = %{
-        img_1_path: Path.join(".", "/test/4_white_pixels.png"),
-        img_2_path: Path.join(".", "/test/white_pixel.png"),
+        img_1_path: Path.join(".", "/test/fixtures/4_white_pixels.png"),
+        img_2_path: Path.join(".", "/test/fixtures/white_pixel.png"),
         diff_path: "/test/diff.png"
       }
       assert Pixelmatch.run(opts) == {:error, :dimensions_different}
