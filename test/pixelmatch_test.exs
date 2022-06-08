@@ -8,7 +8,7 @@ defmodule PexelmatchTest do
       assert Pexelmatch.run(
         Path.join(".", "/test/fixtures/4_white_pixels.png"),
         Path.join(".", "/test/fixtures/4_black_pixels.png"),
-        "./test/diff.png"
+        "./test/fixtures/diff.png"
        ) == {:ok, 4}
     end
 
@@ -16,7 +16,7 @@ defmodule PexelmatchTest do
       assert Pexelmatch.run(
         Path.join(".", "/test/fixtures/4_white_pixels.png"),
         Path.join(".", "/test/fixtures/4_white_pixels.png"),
-        "/test/diff.png"
+        "./test/fixtures/diff.png"
       ) == {:ok, 0}
     end
 
@@ -24,7 +24,7 @@ defmodule PexelmatchTest do
       assert Pexelmatch.run(
         Path.join(".", "/test/fixtures/4_white_pixels.png"),
         Path.join(".", "/test/fixtures/white_pixel.png"),
-        "/test/diff.png"
+        "./test/fixtures/diff.png"
       ) == {:error, :dimensions_different}
     end
   end
