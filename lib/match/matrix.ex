@@ -1,4 +1,4 @@
-defmodule Pixelmatch.Matrix do
+defmodule Pexelmatch.Matrix do
   alias ExPng.Image
 
   def cast_image(%Image{} = image) do

@@ -1,6 +1,6 @@
-defmodule Pixelmatch.MatrixTest do
+defmodule Pexelmatch.MatrixTest do
   use ExUnit.Case
-  alias Pixelmatch.Matrix
+  alias Pexelmatch.Matrix
   alias ExPng.Image
 
   describe "cast" do
@@ -20,7 +20,7 @@ defmodule Pixelmatch.MatrixTest do
 
   describe "Get Adjacent Coordinates" do
     test "fetches adjacent coordinates" do
-      assert Matrix.get_adjacent_coordinates(0, 0, 2, 2) == [{1, 0}, {0, 1}, {1, 1}]
+      assert Matrix.get_adjacent_coordinates(0, 0, 2, 2) == [{0, 1}, {1, 0}, {1, 1}]
     end
   end
 end

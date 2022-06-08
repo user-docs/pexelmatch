@@ -1,6 +1,6 @@
-defmodule Pixelmatch.Match do
+defmodule Pexelmatch.Match do
   alias ExPng.Image
-  alias Pixelmatch.Matrix
+  alias Pexelmatch.Matrix
   require Logger
 
   defstruct img_1: %{}, img_2: %{}, deltas: %{}, diff: %{}
@@ -20,18 +20,17 @@ defmodule Pixelmatch.Match do
   # draw the diff over a transparent background (a mask)
   @default_diff_mask false
 
-  @spec apply(any, any, binary, pos_integer, pos_integer, map) :: {:ok, any}
-  def apply(img_1, img_2, output, width, height, options) do
+  def apply(img_1, img_2, options) do
     threshold = Map.get(options, :threshold, @default_threshold)
 
     opts = %{
-      width: width,
-      height: height,
+      width: img_1.width,
+      height: img_1.height,
       threshold: threshold,
       include_aa: Map.get(options, :include_aa, @default_include_aa),
       alpha: Map.get(options, :alpha, @default_alpha),
       diff_mask: Map.get(options, :diff_mask, @default_diff_mask),
-      aa_color: Map.get(options, :diff_mask, @default_aa_color),
+      aa_color: Map.get(options, :aa_color, @default_aa_color),
       diff_color: Map.get(options, :diff_color, @default_diff_color),
       diff_color_alt: Map.get(options, :diff_color_alt, @default_diff_color_alt),
       max_delta: 35215 * threshold * threshold
@@ -40,19 +39,29 @@ defmodule Pixelmatch.Match do
     matrix_1 = Matrix.cast_image(img_1)
     matrix_2 = Matrix.cast_image(img_2)
 
-    with {:same, false} <- {:same, images_identical?(img_1, img_2, opts)},
-         {:cmp, %{diff_count: count, diff_img: img}} <- {:cmp, compare(matrix_1, matrix_2, opts)},
-         {:write, {:ok, _}} <- {:write, Image.to_file(img, output)} do
-      {:ok, count}
+    with {:same, false} <- {:same, matrices_identical?(matrix_1, matrix_2, opts)},
+         {:cmp, %{diff_count: count, diff_img: img}} <- {:cmp, compare(matrix_1, matrix_2, opts)} do
+      {:ok, count, img}
     else
-      {:same, true} -> {:ok, :identical}
+      {:same, true} -> {:ok, 0, nil}
+      {:cmp, _} -> {:error, "Comparison failed"}
     end
   end
 
-  def images_identical?(img_1, img_2, opts) do
+  def images_identical?(%Image{} = img_1, %Image{} = img_2, opts) do
+    matrix_1 = Matrix.cast_image(img_1)
+    matrix_2 = Matrix.cast_image(img_2)
+    matrices_identical?(matrix_1, matrix_2, opts)
+  end
+  def matrices_identical?(img_1, img_2, opts) do
     pixels_identical = fn(acc, x, y) ->
       if acc do
-        Image.at(img_1, {x, y}) == Image.at(img_2, {x, y})
+        pixel_1 = Matrix.get(img_1, {x, y})
+        pixel_2 = Matrix.get(img_2, {x, y})
+        # IO.inspect(pixel_1)
+        # IO.inspect(pixel_2)
+        # IO.puts("x: #{x}, y: #{y}, #{pixel_1 == pixel_2}")
+        pixel_1 == pixel_2
       else
         acc
       end
@@ -62,7 +71,13 @@ defmodule Pixelmatch.Match do
   end
 
   def compare(matrix_1, matrix_2, opts) do
-    diff_img = ExPng.Image.new(opts.width, opts.height)
+    diff_img =
+      Enum.map(1..opts.height, fn _ ->
+        Enum.map(1..opts.width, fn _ ->
+          <<0, 0, 0, 0>>
+        end)
+      end)
+      |> ExPng.Image.new()
     init_acc = %{
       diff_count: 0,
       diff_img: diff_img
@@ -77,27 +92,36 @@ defmodule Pixelmatch.Match do
 
       #IO.puts("p1: #{p1_antialiased?} p2: #{p2_antialiased?}")
 
-      {
-        abs(delta) > opts.max_delta,
-        not(opts.include_aa) && (p1_antialiased? || p2_antialiased?),
-        not(opts.diff_mask)
-      }
-      |> case do
-        {true, true, true} ->
-          Logger.debug("Will write anti-aliased pixel at x: #{x}, y: #{y}")
-          pixel = draw_pixel(opts.aa_color)
-          Map.put(acc, :diff_img, Image.draw(acc.diff_img, {x, y}, pixel))
+      if(abs(delta) > opts.max_delta) do
+        if(not(opts.include_aa) && (p1_antialiased? || p2_antialiased?)) do
+          if(not(opts.diff_mask)) do
+            #IO.inspect("we will draw aa pixel #{x}, #{y}")
+            pixel = draw_pixel(opts.aa_color)
+            Map.put(acc, :diff_img, Image.draw(acc.diff_img, {x, y}, pixel))
+          else
+            acc
+          end
+        else
+          #IO.inspect("we will draw red pixel #{x}, #{y}")
+          color =
+            if delta < 0 do
+              opts.diff_color_alt || opts.diff_color
+            else
+              opts.diff_color
+            end
 
-        {true, _, _} ->
-          color = opts.diff_color_alt || opts.diff_color
           pixel = draw_pixel(color)
           acc
           |> Map.put(:diff_img, Image.draw(acc.diff_img, {x, y}, pixel))
           |> Map.put(:diff_count, acc.diff_count + 1)
-
-        _ ->
+        end
+      else
+        if(not(opts.diff_mask)) do
           pixel = draw_gray_pixel(pixel_1, opts.alpha)
           Map.put(acc, :diff_img, Image.draw(acc.diff_img, {x, y}, pixel))
+        else
+          acc
+        end
       end
     end
 
@@ -125,7 +149,7 @@ defmodule Pixelmatch.Match do
       delta = color_delta(pixel, adjacent_pixel.pixel, true)
 
       # IO.inspect(adjacent_pixel, label: :adjacent_pixel)
-      IO.puts("x: #{adjacent_pixel.x}, y: #{adjacent_pixel.y}, delta: #{delta}")
+      #IO.puts("x: #{adjacent_pixel.x}, y: #{adjacent_pixel.y}, delta: #{delta}")
 
       case delta do
         0 ->
@@ -148,7 +172,6 @@ defmodule Pixelmatch.Match do
           acc
       end
     end)
-    |> IO.inspect()
     |> case do
       %{zeros: zeros} when zeros > 2 ->
         false
@@ -166,7 +189,7 @@ defmodule Pixelmatch.Match do
         max_1 = has_many_siblings(matrix,        max_x, max_y, width, height)
         max_2 = has_many_siblings(other_matrix,  max_x, max_y, width, height)
 
-        IO.puts("#{x},  #{y}, #{inspect pixel}: #{min_1}, #{min_2}, #{max_1}, #{max_2}")
+        #IO.puts("#{x},  #{y}, #{inspect pixel}: #{min_1}, #{min_2}, #{max_1}, #{max_2}")
         (min_1 && min_2) || (max_1 && max_2)
     end
   end
@@ -193,7 +216,7 @@ defmodule Pixelmatch.Match do
 
   def draw_gray_pixel(<<_r, _g, _b, a>> = pixel_1, alpha) do
     # dubious, this might need to get floored
-    val = blend(rgb_to_y(pixel_1), alpha * a / 255) |> round()
+    val = blend(rgb_to_y(pixel_1), alpha * a / 255) |> floor()
     <<val, val, val, 255>>
   end
 
