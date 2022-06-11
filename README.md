@@ -46,3 +46,4 @@ In this example we use ExPng for file I/O.
   Image.to_file(diff_data, Path.join(".", "/test/fixtures/temp_diff.png"))
 ```
 
+Options work the same way as pixelmatch, but are snake cased.
