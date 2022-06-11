@@ -1,4 +1,7 @@
 defmodule Pexelmatch.Match do
+  @moduledoc """
+  The main internal API for matching images.
+  """
   alias ExPng.Image
   alias Pexelmatch.Matrix
   require Logger

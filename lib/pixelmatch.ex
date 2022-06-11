@@ -1,4 +1,8 @@
 defmodule Pexelmatch do
+  @moduledoc """
+  The top-level API for Pixelmatch.
+  Reads images from paths, diffs them, and returns `{:ok, num_pixels_different}`.
+  """
   alias ExPng.Image
   alias Pexelmatch.Match
   def run(img_1_path, img_2_path, diff_path, opts \\ %{}) do
